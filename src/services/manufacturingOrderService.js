@@ -41,18 +41,20 @@ const createManufacturingOrder = async (data) => {
   });
 };
 
-const getManufacturingOrders = async (page = 1, limit = 10) => {
-  const skip = (page - 1) * limit;
-  const take = parseInt(limit);
+const getManufacturingOrders = async (page = 1, limit = 10, status = null) => {
+  const skip  = (parseInt(page) - 1) * parseInt(limit);
+  const take  = parseInt(limit);
+  const where = status && status !== 'ALL' ? { status: status.toUpperCase() } : {};
 
   const [orders, total] = await prisma.$transaction([
     prisma.manufacturingOrder.findMany({
+      where,
       skip,
       take,
       orderBy: { createdAt: 'desc' },
       include: { product: true, workOrders: true }
     }),
-    prisma.manufacturingOrder.count()
+    prisma.manufacturingOrder.count({ where })
   ]);
 
   return {

@@ -14,8 +14,8 @@ const createManufacturingOrder = async (req, res, next) => {
 
 const getManufacturingOrders = async (req, res, next) => {
   try {
-    const { page, limit } = req.query;
-    const result = await moService.getManufacturingOrders(page, limit);
+    const { page, limit, status } = req.query;
+    const result = await moService.getManufacturingOrders(page, limit, status);
     successResponse(res, 200, 'Manufacturing Orders retrieved successfully', result);
   } catch (error) {
     next(error);
