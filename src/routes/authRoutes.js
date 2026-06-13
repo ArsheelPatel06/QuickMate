@@ -19,6 +19,7 @@ const loginSchema = Joi.object({
 
 router.post('/register', validate(registerSchema), authController.register);
 router.post('/login', validate(loginSchema), authController.login);
+router.post('/sync', authController.syncFirebaseUser);   // Firebase token → DB user
 router.get('/users', protect, authorize('ADMIN', 'OWNER'), authController.getUsers);
 
 module.exports = router;

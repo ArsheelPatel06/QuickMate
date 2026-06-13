@@ -98,9 +98,15 @@ export function Header({ toggleSidebar }: HeaderProps) {
     fetchNotifications();
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('currentUser');
+  const handleLogout = async () => {
+    try {
+      // Dynamic import avoids SSR issues
+      const { firebaseLogout } = await import('@/lib/firebase');
+      await firebaseLogout();
+    } catch {
+      localStorage.removeItem('token');
+      localStorage.removeItem('currentUser');
+    }
     window.location.href = '/login';
   };
 

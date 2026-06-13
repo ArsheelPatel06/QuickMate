@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { auth, isConfigured, onAuthStateChanged } from '@/lib/firebase';
 
 // Pages that don't need the shell (sidebar + header)
 const AUTH_ROUTES = ['/login', '/signup'];
@@ -18,15 +19,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const isAuthPage = AUTH_ROUTES.some(r => pathname?.startsWith(r));
 
   useEffect(() => {
-    if (isAuthPage) {
-      setChecked(true);
-      return;
-    }
-    const token = localStorage.getItem('token');
-    if (!token) {
-      router.replace('/login');
+    if (isAuthPage) { setChecked(true); return; }
+
+    if (isConfigured && auth) {
+      // Firebase mode: wait for auth state, keep token fresh
+      const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+        if (!firebaseUser) {
+          router.replace('/login');
+        } else {
+          const freshToken = await firebaseUser.getIdToken();
+          localStorage.setItem('token', freshToken);
+          setChecked(true);
+        }
+      });
+      return () => unsub();
     } else {
-      setChecked(true);
+      // Legacy JWT mode
+      const token = localStorage.getItem('token');
+      if (!token) { router.replace('/login'); } else { setChecked(true); }
     }
   }, [pathname, isAuthPage, router]);
 
