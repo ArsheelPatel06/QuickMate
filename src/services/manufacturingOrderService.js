@@ -163,9 +163,38 @@ const completeWorkOrder = async (moId, woId, actualDuration) => {
   };
 };
 
+// Update Work Order status (PENDING → READY → IN_PROGRESS → PAUSED → DONE)
+const updateWorkOrderStatus = async (moId, woId, status) => {
+  const mo = await getManufacturingOrderById(moId);
+  const wo = mo.workOrders.find(w => w.id === woId);
+  if (!wo) throw new Error(`Work Order ${woId} not found`);
+
+  const allowed = { PENDING: ['READY'], READY: ['IN_PROGRESS'], IN_PROGRESS: ['PAUSED', 'DONE'], PAUSED: ['IN_PROGRESS'] };
+  if (!allowed[wo.status]?.includes(status)) {
+    throw new Error(`Cannot transition from ${wo.status} to ${status}`);
+  }
+
+  const updateData = { status };
+  if (status === 'IN_PROGRESS' && !wo.startDate) updateData.startDate = new Date();
+  if (status === 'DONE') {
+    updateData.endDate = new Date();
+    updateData.actualDuration = wo.plannedDuration;
+  }
+
+  await prisma.workOrder.update({ where: { id: woId }, data: updateData });
+
+  // Move MO to IN_PROGRESS when first WO starts
+  if (status === 'IN_PROGRESS' && ['DRAFT', 'PLANNED'].includes(mo.status)) {
+    await prisma.manufacturingOrder.update({ where: { id: moId }, data: { status: 'IN_PROGRESS', startDate: new Date() } });
+  }
+
+  return getManufacturingOrderById(moId);
+};
+
 module.exports = {
   createManufacturingOrder,
   getManufacturingOrders,
   getManufacturingOrderById,
+  updateWorkOrderStatus,
   completeWorkOrder
 };

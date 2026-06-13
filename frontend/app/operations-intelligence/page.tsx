@@ -39,11 +39,13 @@ interface ForecastItem {
 interface WorkCenterData {
   workCenter: string; capacity: number;
   queueDepth: number; utilization: number; status: string;
+  queuedMinutes?: number; availableMinutes?: number;
 }
 
 interface OrderRiskItem {
   orderNumber: string; customer: string; items: string;
   promisedDate: string; delayDays: number; orderRisk: string; primaryReason: string;
+  estimatedDaysToDeliver?: number;
 }
 
 interface AdvisorRecommendation {
@@ -424,7 +426,7 @@ export default function OperationsIntelligencePage() {
       <div className="flex flex-col items-center justify-center h-96 gap-4">
         <AlertCircle className="h-12 w-12 text-red-400" />
         <p className="text-gray-700 font-medium">{error ?? 'No data available'}</p>
-        <button onClick={fetchData} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+        <button onClick={() => fetchData(true)} className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
           Retry
         </button>
       </div>
@@ -619,7 +621,7 @@ export default function OperationsIntelligencePage() {
                 </div>
                 {wc.utilization > 100 && (
                   <p className="text-xs text-red-500 mt-1">
-                    Overflow: {Math.round(wc.queuedMinutes - wc.availableMinutes)} min beyond daily capacity
+                    Overflow: {Math.round((wc.queuedMinutes ?? 0) - (wc.availableMinutes ?? 0))} min beyond daily capacity
                   </p>
                 )}
               </div>

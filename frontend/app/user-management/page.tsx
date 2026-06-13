@@ -297,7 +297,7 @@ export default function UserManagementPage() {
               {PERMISSIONS.map(p => (
                 <tr key={p.feature} className="hover:bg-slate-50/50">
                   <td className="px-6 py-3 font-medium text-slate-700">{p.feature}</td>
-                  {(['ADMIN','SALES','PURCHASE','MANUFACTURING','INVENTORY'] as Role[]).map(r => (
+                  {(['ADMIN','SALES','PURCHASE','MANUFACTURING','INVENTORY'] as const).map(r => (
                     <td key={r} className="px-4 py-3 text-center">
                       {p[r]
                         ? <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs font-bold">✓</span>

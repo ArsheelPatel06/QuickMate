@@ -57,7 +57,7 @@ export default function SalesOrdersPage() {
     setConfirmingId(order.id);
     try {
       const res = await fetch(`${API}/sales-orders/${order.id}/confirm`, {
-        method: 'PATCH',
+        method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();

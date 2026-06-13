@@ -2,6 +2,20 @@ const moService = require('../services/manufacturingOrderService');
 const automationService = require('../services/automationService');
 const { successResponse, errorResponse } = require('../utils/response');
 
+const updateWorkOrderStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    if (!status) return errorResponse(res, 400, 'status is required');
+    const order = await moService.updateWorkOrderStatus(req.params.id, req.params.workOrderId, status);
+    successResponse(res, 200, 'Work order status updated', order);
+  } catch (error) {
+    if (error.message.includes('Cannot transition') || error.message.includes('not found')) {
+      return errorResponse(res, 400, error.message);
+    }
+    next(error);
+  }
+};
+
 const createManufacturingOrder = async (req, res, next) => {
   try {
     const order = await moService.createManufacturingOrder(req.body);
@@ -55,5 +69,6 @@ module.exports = {
   createManufacturingOrder,
   getManufacturingOrders,
   getManufacturingOrderById,
-  completeWorkOrder
+  completeWorkOrder,
+  updateWorkOrderStatus,
 };

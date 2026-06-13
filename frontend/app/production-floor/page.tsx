@@ -63,13 +63,24 @@ export default function ProductionFloorPage() {
   const updateWorkOrderStatus = async (woId: string, moId: string, newStatus: string) => {
     setUpdatingId(woId);
     try {
-      const body: Record<string, unknown> = {};
-      if (newStatus === 'DONE') body.actualDuration = workOrders.find(w => w.id === woId)?.plannedDuration;
-      await fetch(`${API}/manufacturing-orders/${moId}/work-orders/${woId}/complete`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
+      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+
+      if (newStatus === 'DONE') {
+        // Use the dedicated complete endpoint which handles stock updates + MO finalization
+        const wo = workOrders.find(w => w.id === woId);
+        await fetch(`${API}/manufacturing-orders/${moId}/work-orders/${woId}/complete`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ actualDuration: wo?.plannedDuration }),
+        });
+      } else {
+        // Use status transition endpoint for READY / IN_PROGRESS / PAUSED
+        await fetch(`${API}/manufacturing-orders/${moId}/work-orders/${woId}/status`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ status: newStatus }),
+        });
+      }
       fetchWorkOrders();
     } catch {} finally {
       setUpdatingId(null);

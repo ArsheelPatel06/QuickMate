@@ -43,4 +43,11 @@ router.post(
   moController.completeWorkOrder
 );
 
+// Update work order status (READY / IN_PROGRESS / PAUSED)
+router.patch(
+  '/:id/work-orders/:workOrderId/status',
+  authorize('ADMIN', 'MANUFACTURING', 'OWNER'),
+  moController.updateWorkOrderStatus
+);
+
 module.exports = router;
