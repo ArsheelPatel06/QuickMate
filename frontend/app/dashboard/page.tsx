@@ -11,7 +11,12 @@ import {
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 interface OICData {
-  healthScore: { overall: number; inventory: number; manufacturing: number; procurement: number };
+  healthScore: {
+    overall: number;
+    signal: string;
+    breakdown: { inventoryHealth: number; manufacturingHealth: number; procurementHealth: number };
+    signals: { inventory: string; manufacturing: string; procurement: string };
+  };
   alerts: Array<{ type: string; severity: string; message: string }>;
   inventoryRisk: {
     components: Array<{ component: string; risk: string; gap: number; available: number; required: number }>;
@@ -108,7 +113,8 @@ export default function ControlTowerPage() {
     return () => clearInterval(interval);
   }, [fetchAll]);
 
-  const health = oic?.healthScore;
+  const health   = oic?.healthScore;
+  const breakdown = health?.breakdown;
   const criticalAlerts = oic?.alerts?.filter(a => ['CRITICAL','HIGH'].includes(a.severity)) ?? [];
   const recommendations = oic?.advisor?.recommendations ?? [];
   const bottlenecks = oic?.bottleneck?.workCenters?.filter(w => w.status === 'BOTTLENECK') ?? [];
@@ -164,15 +170,18 @@ export default function ControlTowerPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Overall',        value: health.overall,       icon: Activity    },
-              { label: 'Inventory',      value: health.inventory,     icon: Package     },
-              { label: 'Manufacturing',  value: health.manufacturing, icon: Factory     },
-              { label: 'Procurement',    value: health.procurement,   icon: Truck       },
+              { label: 'Overall',       value: health.overall,                      signal: health.signal,              icon: Activity },
+              { label: 'Inventory',     value: breakdown?.inventoryHealth    ?? 0,  signal: health.signals?.inventory,   icon: Package  },
+              { label: 'Manufacturing', value: breakdown?.manufacturingHealth ?? 0,  signal: health.signals?.manufacturing,icon: Factory  },
+              { label: 'Procurement',   value: breakdown?.procurementHealth  ?? 0,  signal: health.signals?.procurement, icon: Truck    },
             ].map(m => (
               <div key={m.label} className="text-center p-4 rounded-xl bg-slate-50 border border-slate-100">
                 <m.icon className={`h-5 w-5 mx-auto mb-2 ${HEALTH_COLOR(m.value)}`} />
                 <p className={`text-3xl font-black ${HEALTH_COLOR(m.value)}`}>{m.value}</p>
-                <p className="text-xs text-slate-500 mt-1">{m.label}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{m.label}</p>
+                {m.signal && (
+                  <p className={`text-[10px] font-semibold mt-0.5 ${HEALTH_COLOR(m.value)}`}>{m.signal}</p>
+                )}
                 <div className="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all ${HEALTH_BG(m.value)}`} style={{ width: `${m.value}%` }} />
                 </div>
