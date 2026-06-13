@@ -1,0 +1,23 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+frontend/.next/
+frontend/out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+*.swp

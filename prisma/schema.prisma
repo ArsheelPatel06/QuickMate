@@ -1,0 +1,390 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =======================
+// ENUMS
+// =======================
+
+enum Role {
+  ADMIN
+  SALES
+  PURCHASE
+  MANUFACTURING
+  INVENTORY
+  OWNER
+}
+
+enum ProcurementStrategy {
+  MAKE_TO_ORDER
+  MAKE_TO_STOCK
+}
+
+enum ProcurementType {
+  MANUFACTURE
+  PURCHASE
+  SUBCONTRACT
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  PARTIALLY_DELIVERED
+  FULLY_DELIVERED
+  CANCELLED
+}
+
+enum MoStatus {
+  DRAFT
+  PLANNED
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum WoStatus {
+  PENDING
+  READY
+  IN_PROGRESS
+  PAUSED
+  DONE
+}
+
+enum StockTransactionType {
+  IN
+  OUT
+  TRANSFER
+  ADJUSTMENT
+}
+
+enum ActionType {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  OTHER
+}
+
+// =======================
+// MODELS
+// =======================
+
+model User {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(SALES)
+  department    String?
+  approvalLimit Float    @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  salesOrders      SalesOrder[]
+  purchaseOrders   PurchaseOrder[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  pendingApprovals PendingApproval[] @relation("RequestedBy")
+  approvedItems    PendingApproval[] @relation("ApprovedBy")
+
+  @@index([email])
+}
+
+model Vendor {
+  id        String   @id @default(uuid())
+  name      String
+  contact   String?
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+
+  @@index([name])
+}
+
+model Product {
+  id                  String              @id @default(uuid())
+  name                String
+  sku                 String              @unique
+  salesPrice          Decimal             @db.Decimal(10, 2)
+  costPrice           Decimal             @db.Decimal(10, 2)
+  onHandQty           Float               @default(0)
+  reservedQty         Float               @default(0)
+  procurementStrategy ProcurementStrategy @default(MAKE_TO_STOCK)
+  procureOnDemand     Boolean             @default(false)
+  procurementType     ProcurementType     @default(PURCHASE)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  bomLines            BOMLine[]
+  boms                BOM[]
+  salesOrderLines     SalesOrderLine[]
+  purchaseOrderLines  PurchaseOrderLine[]
+  manufacturingOrders ManufacturingOrder[]
+  stockLedgers        StockLedger[]
+
+  @@index([sku])
+  @@index([name])
+}
+
+model BOM {
+  id        String   @id @default(uuid())
+  name      String
+  productId String
+  quantity  Float    @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product             Product              @relation(fields: [productId], references: [id])
+  bomLines            BOMLine[]
+  bomOperations       BOMOperation[]
+  manufacturingOrders ManufacturingOrder[]
+
+  @@index([productId])
+}
+
+model BOMLine {
+  id        String   @id @default(uuid())
+  bomId     String
+  productId String
+  quantity  Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bom     BOM     @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([bomId])
+  @@index([productId])
+}
+
+model BOMOperation {
+  id            String   @id @default(uuid())
+  bomId         String
+  workCenterId  String
+  operationName String
+  sequence      Int
+  duration      Float    // in minutes
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bom        BOM        @relation(fields: [bomId], references: [id], onDelete: Cascade)
+  workCenter WorkCenter @relation(fields: [workCenterId], references: [id])
+
+  @@index([bomId])
+  @@index([workCenterId])
+}
+
+model WorkCenter {
+  id          String   @id @default(uuid())
+  name        String
+  capacity    Float    @default(1) // Number of machines/workers
+  costPerHour Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  bomOperations BOMOperation[]
+  workOrders    WorkOrder[]
+}
+
+model SalesOrder {
+  id           String      @id @default(uuid())
+  orderNumber  String      @unique
+  customerName String
+  status       OrderStatus @default(DRAFT)
+  totalAmount  Decimal     @db.Decimal(10, 2)
+  userId       String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  user  User             @relation(fields: [userId], references: [id])
+  lines SalesOrderLine[]
+
+  @@index([orderNumber])
+  @@index([userId])
+}
+
+model SalesOrderLine {
+  id           String   @id @default(uuid())
+  salesOrderId String
+  productId    String
+  quantity     Float
+  unitPrice    Decimal  @db.Decimal(10, 2)
+  lineTotal    Decimal  @db.Decimal(10, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@index([salesOrderId])
+  @@index([productId])
+}
+
+model PurchaseOrder {
+  id                 String      @id @default(uuid())
+  orderNumber        String      @unique
+  vendorId           String
+  status             OrderStatus @default(DRAFT)
+  totalAmount        Decimal     @db.Decimal(10, 2)
+  userId             String
+  sourceSalesOrderId String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  vendor Vendor              @relation(fields: [vendorId], references: [id])
+  user   User                @relation(fields: [userId], references: [id])
+  lines  PurchaseOrderLine[]
+
+  @@index([orderNumber])
+  @@index([vendorId])
+  @@index([userId])
+}
+
+model PurchaseOrderLine {
+  id              String   @id @default(uuid())
+  purchaseOrderId String
+  productId       String
+  quantity        Float
+  unitPrice       Decimal  @db.Decimal(10, 2)
+  lineTotal       Decimal  @db.Decimal(10, 2)
+  receivedQty     Float    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+model ManufacturingOrder {
+  id                String    @id @default(uuid())
+  orderNumber       String    @unique
+  productId         String
+  bomId             String
+  status             MoStatus  @default(DRAFT)
+  plannedQuantity    Float
+  completedQuantity  Float     @default(0)
+  sourceSalesOrderId String?
+  startDate          DateTime?
+  endDate            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  product    Product     @relation(fields: [productId], references: [id])
+  bom        BOM         @relation(fields: [bomId], references: [id])
+  workOrders WorkOrder[]
+
+  @@index([orderNumber])
+  @@index([productId])
+  @@index([bomId])
+}
+
+model WorkOrder {
+  id                   String    @id @default(uuid())
+  manufacturingOrderId String
+  workCenterId         String
+  operationName        String
+  sequence             Int
+  status               WoStatus  @default(PENDING)
+  plannedDuration      Float     // in minutes
+  actualDuration       Float?    // in minutes
+  startDate            DateTime?
+  endDate              DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  manufacturingOrder ManufacturingOrder @relation(fields: [manufacturingOrderId], references: [id], onDelete: Cascade)
+  workCenter         WorkCenter         @relation(fields: [workCenterId], references: [id])
+
+  @@index([manufacturingOrderId])
+  @@index([workCenterId])
+}
+
+model StockLedger {
+  id              String               @id @default(uuid())
+  productId       String
+  transactionType StockTransactionType
+  quantity        Float
+  reason          String?              // e.g. "sales_delivery", "purchase_receipt"
+  referenceType   String?              // e.g. "SalesOrder", "PurchaseOrder", "ManufacturingOrder"
+  referenceId     String?
+  date            DateTime             @default(now())
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([transactionType])
+  @@index([referenceType, referenceId])
+}
+
+model AuditLog {
+  id        String     @id @default(uuid())
+  userId    String
+  action    ActionType
+  entity    String     // e.g. "Product", "SalesOrder"
+  entityId  String?    // ID of the affected record
+  details   Json?      // Store changes or specific info
+  ipAddress String?
+  createdAt DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity, entityId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // SHORTAGE | MO_CREATED | PO_APPROVAL | DELIVERY_READY | SYSTEM | APPROVAL_DONE
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, read])
+}
+
+model PendingApproval {
+  id           String    @id @default(uuid())
+  entityType   String    // PURCHASE_ORDER | MANUFACTURING_ORDER
+  entityId     String
+  entityNumber String
+  amount       Float
+  requestedById String
+  approvedById  String?
+  status        String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reason        String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  resolvedAt    DateTime?
+
+  requestedBy User  @relation("RequestedBy", fields: [requestedById], references: [id])
+  approvedBy  User? @relation("ApprovedBy",  fields: [approvedById],  references: [id])
+
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([requestedById])
+}

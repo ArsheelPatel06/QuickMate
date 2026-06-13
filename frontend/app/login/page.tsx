@@ -1,0 +1,147 @@
+"use client";
+
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Mail, Lock, Loader2 } from 'lucide-react';
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Login failed. Please check your credentials.');
+      const token = data.data?.token || data.token;
+      const user  = data.data?.user  || data.user;
+      if (token) {
+        localStorage.setItem('token', token);
+        // Store user profile so Header/Sidebar can read it without extra API calls
+        if (user) localStorage.setItem('currentUser', JSON.stringify(user));
+        router.push('/operations-intelligence');
+      } else {
+        throw new Error('Authentication succeeded but no token was returned.');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen bg-slate-50">
+      {/* Left panel — branding */}
+      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 flex-col items-center justify-center p-12 relative overflow-hidden">
+        {/* Background texture */}
+        <div className="absolute inset-0 opacity-5" style={{
+          backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
+          backgroundSize: '32px 32px',
+        }} />
+
+        <div className="relative z-10 text-center max-w-sm">
+          {/* Logo */}
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-700 to-purple-500 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-purple-500/20">
+            <span className="text-white font-black text-2xl">Q</span>
+          </div>
+          <h1 className="text-4xl font-black text-white tracking-tight">QuickMate</h1>
+          <p className="text-slate-400 mt-3 text-lg">Manufacturing ERP Platform</p>
+
+          <div className="mt-10 space-y-3 text-left">
+            {[
+              'Order → Manufacturing → Delivery automation',
+              'Real-time bottleneck & inventory intelligence',
+              'Role-based approvals with full audit trail',
+            ].map(f => (
+              <div key={f} className="flex items-start gap-3">
+                <span className="h-5 w-5 rounded-full bg-purple-500/20 border border-purple-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-purple-400 text-[10px] font-bold">✓</span>
+                </span>
+                <p className="text-slate-400 text-sm">{f}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm">
+          {/* Mobile logo */}
+          <div className="lg:hidden flex justify-center mb-8">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-700 to-purple-500 flex items-center justify-center shadow-lg">
+              <span className="text-white font-black text-xl">Q</span>
+            </div>
+          </div>
+
+          <h2 className="text-2xl font-bold text-slate-900">Welcome back</h2>
+          <p className="text-slate-500 mt-1 text-sm">Sign in to your QuickMate account</p>
+
+          <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+            {error && (
+              <div className="rounded-xl bg-red-50 p-3.5 border border-red-200">
+                <p className="text-sm text-red-700 font-medium">{error}</p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email address</label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="admin@shivfurniture.com"
+                  value={formData.email}
+                  onChange={e => setFormData({ ...formData, email: e.target.value })}
+                  className="block w-full rounded-xl border border-slate-300 bg-white py-3 pl-11 pr-4 text-slate-900 text-sm placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="block text-sm font-semibold text-slate-700">Password</label>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
+                  className="block w-full rounded-xl border border-slate-300 bg-white py-3 pl-11 pr-4 text-slate-900 text-sm placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/20 transition-all"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full flex items-center justify-center rounded-xl bg-indigo-700 px-4 py-3.5 text-sm font-bold text-white hover:bg-indigo-800 focus:outline-none focus:ring-4 focus:ring-indigo-500/20 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-md shadow-purple-500/20"
+            >
+              {isLoading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Sign In'}
+            </button>
+          </form>
+
+          <p className="mt-8 text-center text-xs text-slate-400">
+            QuickMate ERP · Manufacturing Suite
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
