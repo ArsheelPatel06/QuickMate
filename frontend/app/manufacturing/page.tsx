@@ -17,6 +17,7 @@ interface MO {
   plannedQuantity: number;
   completedQuantity: number;
   createdAt: string;
+  sourceSalesOrder?: { id: string; orderNumber: string; customerName: string } | null;
   product: { name: string; sku: string };
 }
 
@@ -80,12 +81,13 @@ export default function ManufacturingOverviewPage() {
   const [workCenters, setWorkCenters] = useState<WorkCenter[]>([]);
   const [advisor,     setAdvisor]     = useState<AdvisorRec[]>([]);
   const [loading,     setLoading]     = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [mosRes, oicRes] = await Promise.all([
-        authedFetch(`${API}/manufacturing-orders?limit=20`),
+        authedFetch(`${API}/manufacturing-orders?limit=50`),
         authedFetch(`${API}/intelligence/overview`),
       ]);
       const [mosJson, oicJson] = await Promise.all([mosRes.json(), oicRes.json()]);
@@ -99,15 +101,20 @@ export default function ManufacturingOverviewPage() {
           )
         );
       }
+      setLastRefresh(new Date());
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 30000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   // ── Derived stats ─────────────────────────────────────────────────────────
-  const open      = orders.filter(o => o.status === 'PLANNED').length;
+  const open      = orders.filter(o => ['DRAFT', 'PLANNED'].includes(o.status)).length;
   const inProg    = orders.filter(o => o.status === 'IN_PROGRESS').length;
   const done      = orders.filter(o => o.status === 'DONE').length;
   const recent    = [...orders]
@@ -150,6 +157,11 @@ export default function ManufacturingOverviewPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {lastRefresh && (
+            <span className="text-xs text-gray-400 hidden sm:inline">
+              Updated {lastRefresh.toLocaleTimeString()}
+            </span>
+          )}
           <button onClick={load} className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
             <RefreshCcw className="h-4 w-4" />
           </button>
@@ -240,7 +252,7 @@ export default function ManufacturingOverviewPage() {
             <table className="min-w-full divide-y divide-gray-100">
               <thead className="bg-gray-50/50">
                 <tr>
-                  {['MO Number', 'Product', 'Qty', 'Progress', 'Status', 'Created'].map(h => (
+                  {['MO Number', 'Source SO', 'Product', 'Qty', 'Progress', 'Status', 'Created'].map(h => (
                     <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
@@ -256,6 +268,16 @@ export default function ManufacturingOverviewPage() {
                         <Link href={`/manufacturing-orders/${mo.id}`} className="font-semibold text-purple-600 hover:text-purple-700 text-sm">
                           {mo.orderNumber}
                         </Link>
+                      </td>
+                      <td className="px-5 py-3">
+                        {mo.sourceSalesOrder ? (
+                          <Link href={`/flow-tracker?order=${mo.sourceSalesOrder.orderNumber}`}
+                            className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                            {mo.sourceSalesOrder.orderNumber}
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-700">{mo.product.name}</td>
                       <td className="px-5 py-3 text-sm text-gray-600">{mo.plannedQuantity}</td>
@@ -303,7 +325,7 @@ export default function ManufacturingOverviewPage() {
             ))}
           </div>
           <div className="px-5 py-3 bg-orange-50/40 border-t border-orange-100">
-            <Link href="/manufacturing/intelligence" className="text-xs text-purple-600 font-semibold hover:text-purple-700 flex items-center gap-1">
+            <Link href="/operations-intelligence" className="text-xs text-purple-600 font-semibold hover:text-purple-700 flex items-center gap-1">
               Full Manufacturing Intelligence <ChevronRight className="h-3 w-3" />
             </Link>
           </div>

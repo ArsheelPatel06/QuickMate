@@ -3,7 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { errorResponse } = require('../utils/response');
 const { envConfig } = require('../config/env');
-const { getFirebaseAdmin, admin } = require('../config/firebase');
+const { getFirebaseAdmin, getFirebaseAuth } = require('../config/firebase');
 
 /**
  * Auth middleware — supports two modes:
@@ -27,12 +27,11 @@ const protect = async (req, res, next) => {
   const token = authHeader.split(' ')[1];
   const firebaseApp = getFirebaseAdmin();
 
-  // ── Mode 1: Firebase ──────────────────────────────────────────────────────
+  // ── Mode 1: Firebase (when configured) ────────────────────────────────────
   if (firebaseApp) {
     try {
-      const decoded = await admin.auth().verifyIdToken(token);
+      const decoded = await getFirebaseAuth().verifyIdToken(token);
 
-      // Find user in DB by Firebase UID
       let user = await prisma.user.findUnique({
         where: { firebaseUid: decoded.uid },
         select: { id: true, email: true, role: true, name: true, department: true, approvalLimit: true, isActive: true },
@@ -49,12 +48,12 @@ const protect = async (req, res, next) => {
       req.user = user;
       req.firebaseUid = decoded.uid;
       return next();
-    } catch (err) {
-      return errorResponse(res, 401, 'Invalid or expired Firebase token');
+    } catch {
+      // Fall through to JWT — supports seeded demo login alongside Firebase UI auth
     }
   }
 
-  // ── Mode 2: Legacy JWT fallback ───────────────────────────────────────────
+  // ── Mode 2: Legacy JWT ────────────────────────────────────────────────────
   try {
     const decoded = jwt.verify(token, envConfig.jwtSecret);
     const user = await prisma.user.findUnique({

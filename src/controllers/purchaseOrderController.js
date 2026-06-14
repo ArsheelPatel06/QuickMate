@@ -56,10 +56,24 @@ const receivePurchaseOrder = async (req, res, next) => {
   }
 };
 
+const cancelPurchaseOrder = async (req, res, next) => {
+  try {
+    const order = await purchaseOrderService.cancelPurchaseOrder(req.params.id);
+    successResponse(res, 200, 'Purchase Order cancelled successfully', order);
+  } catch (error) {
+    if (error.message.includes('Cannot cancel') || error.message.includes('already cancelled')) {
+      return errorResponse(res, 400, error.message);
+    }
+    if (error.message === 'Purchase Order not found') return errorResponse(res, 404, error.message);
+    next(error);
+  }
+};
+
 module.exports = {
   createPurchaseOrder,
   getPurchaseOrders,
   getPurchaseOrderById,
   confirmPurchaseOrder,
-  receivePurchaseOrder
+  receivePurchaseOrder,
+  cancelPurchaseOrder
 };

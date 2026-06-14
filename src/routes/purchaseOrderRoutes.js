@@ -59,4 +59,10 @@ router.post(
   purchaseOrderController.receivePurchaseOrder
 );
 
+router.post(
+  '/:id/cancel',
+  authorize('ADMIN', 'PURCHASE', 'OWNER'),
+  purchaseOrderController.cancelPurchaseOrder
+);
+
 module.exports = router;

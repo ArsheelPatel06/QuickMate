@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Local screenshot dumps (README uses docs/screenshots/)
+frontend/images/
+images/
+
 # Dependencies
 node_modules/
 frontend/node_modules/

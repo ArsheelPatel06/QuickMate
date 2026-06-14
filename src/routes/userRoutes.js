@@ -12,5 +12,6 @@ router.patch('/:id',     authorize('ADMIN','OWNER'), ctrl.updateUser);
 router.patch('/:id/disable', authorize('ADMIN','OWNER'), ctrl.disableUser);
 router.patch('/:id/enable',  authorize('ADMIN','OWNER'), ctrl.enableUser);
 router.post('/:id/reset-password', authorize('ADMIN','OWNER'), ctrl.resetPassword);
+router.delete('/:id',              authorize('ADMIN','OWNER'), ctrl.deleteUser);
 
 module.exports = router;

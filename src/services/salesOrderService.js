@@ -1,7 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const stockService = require('./stockService');
-const procurementService = require('./procurementService');
 
 const createSalesOrder = async (userId, data) => {
   const { customerName, lines } = data; 
@@ -44,7 +43,10 @@ const getSalesOrders = async (page = 1, limit = 10) => {
       skip,
       take,
       orderBy: { createdAt: 'desc' },
-      include: { user: { select: { name: true, email: true } } }
+      include: {
+        user: { select: { name: true, email: true } },
+        lines: { include: { product: { select: { id: true, name: true, sku: true, onHandQty: true, reservedQty: true } } } },
+      },
     }),
     prisma.salesOrder.count()
   ]);
@@ -106,10 +108,8 @@ const confirmSalesOrder = async (id) => {
   }
 
   if (shortages.length > 0) {
-    // 4. Trigger procurement automation
-    for (const s of shortages) {
-      await procurementService.triggerProcurement(s.productId, s.shortage, order.id);
-    }
+    // Shortages detected — Flow Tracker drives MO/PO creation via /fulfill endpoint
+    // (avoids auto-routing before user sees make-vs-buy comparison)
   }
 
   return await prisma.salesOrder.update({

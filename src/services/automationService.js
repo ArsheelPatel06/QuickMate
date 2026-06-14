@@ -42,9 +42,10 @@ const usersOfRole = (role) =>
 
 // ─── TRIGGER: Sales Order Confirmed ──────────────────────────────────────────
 /**
- * WHEN SO confirmed
- * IF any finished-good has stock < quantity ordered  → auto create MO + notify manufacturing
- * ELSE                                                → reserve stock + notify sales
+ * WHEN SO confirmed (after salesOrderService.confirmSalesOrder runs)
+ * - Does NOT create MOs or reserve stock (procurementService handles that synchronously)
+ * - Runs raw-material checks on linked MOs
+ * - Sends team notifications
  */
 const processOrderConfirm = async (salesOrderId) => {
   const so = await prisma.salesOrder.findUnique({
@@ -58,7 +59,6 @@ const processOrderConfirm = async (salesOrderId) => {
 
   const log = (msg) => console.log(`[Automation][SO:${so.orderNumber}] ${msg}`);
 
-  // Audit: SO Confirmed
   await prisma.auditLog.create({
     data: {
       userId:   so.userId,
@@ -67,99 +67,57 @@ const processOrderConfirm = async (salesOrderId) => {
       entityId: so.id,
       details:  { event: 'SO_CONFIRMED', orderNumber: so.orderNumber },
     },
+  }).catch(() => {});
+
+  // MOs are created synchronously by procurementService during confirm
+  const linkedMos = await prisma.manufacturingOrder.findMany({
+    where: { sourceSalesOrderId: salesOrderId },
+    include: {
+      product: true,
+      bom: { include: { bomLines: { include: { product: true } } } },
+    },
   });
 
-  for (const line of so.lines) {
-    const available = line.product.onHandQty - line.product.reservedQty;
+  for (const mo of linkedMos) {
+    if (mo.bom) {
+      await processInventoryCheck(mo.bom, mo.plannedQuantity, so.userId, mo);
+    }
+    log(`Linked MO ${mo.orderNumber} — raw material check done`);
+  }
 
-    if (available >= line.quantity) {
-      // ACTION: Reserve stock
-      await prisma.product.update({
-        where: { id: line.productId },
-        data: { reservedQty: { increment: line.quantity } },
-      });
-
-      await prisma.stockLedger.create({
-        data: {
-          productId:       line.productId,
-          transactionType: 'OUT',
-          quantity:        line.quantity,
-          reason:          'sales_reservation',
-          referenceType:   'SalesOrder',
-          referenceId:     so.id,
-        },
-      });
-
-      log(`Stock reserved for ${line.product.name} (qty: ${line.quantity})`);
-
-      // Notify Sales team
-      const salesUsers = await usersOfRole('SALES');
-      await notificationService.broadcastNotification(
-        salesUsers.map(u => u.id),
-        'SYSTEM',
-        `${so.orderNumber}: Stock Reserved`,
-        `${line.quantity} × ${line.product.name} reserved. Order ready for delivery.`,
-        `/sales-orders`
-      );
-    } else {
-      // ACTION: Create Manufacturing Order
-      const bom = await getBomForProduct(line.productId);
-      if (!bom) {
-        log(`No BOM found for ${line.product.name} — skipping MO creation`);
-        continue;
-      }
-
-      const moNumber = await nextNumber('MO', 'manufacturingOrder', 'orderNumber');
-
-      const mo = await prisma.manufacturingOrder.create({
-        data: {
-          orderNumber:       moNumber,
-          productId:         line.productId,
-          bomId:             bom.id,
-          status:            'PLANNED',
-          plannedQuantity:   line.quantity,
-          sourceSalesOrderId: so.id,
-          startDate:         new Date(),
-        },
-      });
-
-      log(`MO ${moNumber} created for ${line.product.name}`);
-
-      // Audit
-      await prisma.auditLog.create({
-        data: {
-          userId:   so.userId,
-          action:   'CREATE',
-          entity:   'ManufacturingOrder',
-          entityId: mo.id,
-          details:  { event: 'AUTO_MO_CREATED', moNumber, sourceOrder: so.orderNumber },
-        },
-      });
-
-      // Notify manufacturing team
-      const mfgUsers = await usersOfRole('MANUFACTURING');
-      await notificationService.broadcastNotification(
-        mfgUsers.map(u => u.id),
-        'MO_CREATED',
-        `MO Created: ${moNumber}`,
-        `Manufacturing Order ${moNumber} for ${line.quantity} × ${line.product.name} was auto-created from ${so.orderNumber}.`,
-        `/manufacturing/orders`
-      );
-
-      // Email manufacturing manager
+  const mfgUsers = await usersOfRole('MANUFACTURING');
+  if (linkedMos.length > 0 && mfgUsers.length) {
+    await notificationService.broadcastNotification(
+      mfgUsers.map(u => u.id),
+      'MO_CREATED',
+      `${so.orderNumber}: ${linkedMos.length} MO(s) ready`,
+      `Manufacturing orders created from ${so.orderNumber}. Review on Production Floor.`,
+      `/manufacturing/orders`
+    );
+    for (const mo of linkedMos) {
       for (const u of mfgUsers) {
         emailService.sendMoCreatedEmail({
           to:          u.email,
           managerName: u.name,
-          moNumber,
-          productName: line.product.name,
-          quantity:    line.quantity,
+          moNumber:    mo.orderNumber,
+          productName: mo.product.name,
+          quantity:    mo.plannedQuantity,
         }).catch(() => {});
       }
-
-      // Check raw material shortage — trigger purchase request if needed
-      await processInventoryCheck(bom, line.quantity, so.userId, mo);
     }
+  }
+
+  const salesUsers = await usersOfRole('SALES');
+  if (salesUsers.length) {
+    await notificationService.broadcastNotification(
+      salesUsers.map(u => u.id),
+      'SYSTEM',
+      `${so.orderNumber} Confirmed`,
+      linkedMos.length > 0
+        ? `Order confirmed. ${linkedMos.length} manufacturing order(s) created for shortages.`
+        : `Order confirmed. Stock reserved — ready for delivery when applicable.`,
+      `/flow-tracker?order=${so.orderNumber}`
+    );
   }
 };
 
@@ -261,19 +219,15 @@ const processInventoryCheck = async (bom, moQty, requestingUserId, mo) => {
 
 // ─── TRIGGER: Work Order Completed ───────────────────────────────────────────
 /**
- * WHEN WO status → DONE
- * IF all WOs for parent MO are DONE → mark MO as DONE, update inventory
+ * WHEN all WOs for an MO are DONE (stock already updated by manufacturingOrderService)
+ * → Send notifications only — do NOT duplicate stock movements
  */
 const processWorkOrderComplete = async (workOrderId) => {
   const wo = await prisma.workOrder.findUnique({
     where: { id: workOrderId },
     include: {
       manufacturingOrder: {
-        include: {
-          workOrders: true,
-          product:    true,
-          bom: { include: { bomLines: { include: { product: true } } } },
-        },
+        include: { workOrders: true, product: true },
       },
     },
   });
@@ -281,53 +235,10 @@ const processWorkOrderComplete = async (workOrderId) => {
 
   const mo = wo.manufacturingOrder;
   const allDone = mo.workOrders.every(w => w.status === 'DONE');
+  if (!allDone || mo.status !== 'DONE') return;
 
-  if (!allDone) return;
+  console.log(`[Automation][MO:${mo.orderNumber}] Completed — notifying teams`);
 
-  // Mark MO as DONE
-  await prisma.manufacturingOrder.update({
-    where: { id: mo.id },
-    data: { status: 'DONE', completedQuantity: mo.plannedQuantity, endDate: new Date() },
-  });
-
-  // ACTION: Consume raw materials, add finished goods
-  for (const bomLine of mo.bom.bomLines) {
-    const consumed = bomLine.quantity * mo.plannedQuantity;
-    await prisma.product.update({
-      where: { id: bomLine.productId },
-      data:  { onHandQty: { decrement: consumed } },
-    });
-    await prisma.stockLedger.create({
-      data: {
-        productId:       bomLine.productId,
-        transactionType: 'OUT',
-        quantity:        consumed,
-        reason:          'manufacturing_consumption',
-        referenceType:   'ManufacturingOrder',
-        referenceId:     mo.id,
-      },
-    });
-  }
-
-  // Add finished goods to stock
-  await prisma.product.update({
-    where: { id: mo.productId },
-    data:  { onHandQty: { increment: mo.plannedQuantity } },
-  });
-  await prisma.stockLedger.create({
-    data: {
-      productId:       mo.productId,
-      transactionType: 'IN',
-      quantity:        mo.plannedQuantity,
-      reason:          'manufacturing_output',
-      referenceType:   'ManufacturingOrder',
-      referenceId:     mo.id,
-    },
-  });
-
-  console.log(`[Automation][MO:${mo.orderNumber}] Completed — stock updated`);
-
-  // Audit — only write if an admin user exists
   const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } });
   if (adminUser) {
     await prisma.auditLog.create({
@@ -341,7 +252,6 @@ const processWorkOrderComplete = async (workOrderId) => {
     }).catch(() => {});
   }
 
-  // Notify sales team — delivery may now be ready
   const salesUsers = await usersOfRole('SALES');
   if (salesUsers.length) {
     await notificationService.broadcastNotification(
@@ -349,7 +259,7 @@ const processWorkOrderComplete = async (workOrderId) => {
       'DELIVERY_READY',
       `${mo.product.name} production complete`,
       `MO ${mo.orderNumber} finished. ${mo.plannedQuantity} × ${mo.product.name} now in stock.`,
-      `/manufacturing/orders`
+      `/flow-tracker`
     );
   }
 };

@@ -61,6 +61,10 @@ const resetPassword = async (id) => {
   return tempPassword;
 };
 
+const deleteUser = async (id) => {
+  return prisma.user.delete({ where: { id } });
+};
+
 module.exports = {
   getAllUsers,
   getUserById,
@@ -69,4 +73,5 @@ module.exports = {
   disableUser,
   enableUser,
   resetPassword,
+  deleteUser,
 };

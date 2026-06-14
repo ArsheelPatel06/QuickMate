@@ -1,71 +1,44 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const triggerProcurement = async (productId, shortageQty, salesOrderId) => {
+const triggerProcurement = async (productId, shortageQty, salesOrderId, { forcePurchase = false, forceManufacture = false } = {}) => {
   return await prisma.$transaction(async (tx) => {
-    // 1. Fetch Product rules
-    const product = await tx.product.findUnique({
-      where: { id: productId }
-    });
-
+    const product = await tx.product.findUnique({ where: { id: productId } });
     if (!product) throw new Error(`Product ${productId} not found`);
 
-    // 2. Fetch Sales Order to link to audit log
-    const salesOrder = await tx.salesOrder.findUnique({
-      where: { id: salesOrderId }
+    const salesOrder = await tx.salesOrder.findUnique({ where: { id: salesOrderId } });
+    if (!salesOrder) throw new Error(`Sales Order ${salesOrderId} not found`);
+
+    const bom = await tx.bOM.findFirst({
+      where: { productId: product.id },
+      include: { bomLines: { include: { product: true } }, bomOperations: true },
     });
+
+    const vendorCost = Number(product.costPrice) * shortageQty;
+    let manufacturingCost = null;
+    if (bom) {
+      const ratio = shortageQty / bom.quantity;
+      manufacturingCost = bom.bomLines.reduce(
+        (sum, line) => sum + Number(line.product.costPrice) * line.quantity * ratio,
+        0
+      );
+    }
+
+    // Smart routing: compare costs when BOM exists; otherwise purchase
+    const useManufacture = forceManufacture
+      ? !!bom
+      : forcePurchase
+      ? false
+      : bom && manufacturingCost !== null && manufacturingCost <= vendorCost;
 
     let generatedDocument = null;
     let documentType = '';
 
-    if (product.procurementType === 'PURCHASE') {
-      // Find a default vendor or create a system dummy vendor
-      let vendor = await tx.vendor.findFirst();
-      if (!vendor) {
-        vendor = await tx.vendor.create({
-          data: { name: 'Default System Vendor', contact: 'Auto-generated' }
-        });
-      }
-
-      const orderNumber = `PO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-      
-      const purchaseOrder = await tx.purchaseOrder.create({
-        data: {
-          orderNumber,
-          vendorId: vendor.id,
-          userId: salesOrder.userId,
-          status: 'DRAFT',
-          totalAmount: product.costPrice * shortageQty,
-          sourceSalesOrderId: salesOrderId,
-          lines: {
-            create: [{
-              productId: product.id,
-              quantity: shortageQty,
-              unitPrice: product.costPrice,
-              lineTotal: product.costPrice * shortageQty
-            }]
-          }
-        }
-      });
-      
-      generatedDocument = purchaseOrder;
-      documentType = 'PurchaseOrder';
-
-    } else if (product.procurementType === 'MANUFACTURE') {
-      const bom = await tx.bOM.findFirst({
-        where: { productId: product.id },
-        include: { bomOperations: true }
-      });
-
-      if (!bom) {
-         console.warn(`Cannot auto-manufacture ${product.name}: No BOM found`);
-         return null;
-      }
-
+    if (useManufacture) {
       const orderNumber = `MO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       const ratio = shortageQty / bom.quantity;
 
-      const manufacturingOrder = await tx.manufacturingOrder.create({
+      generatedDocument = await tx.manufacturingOrder.create({
         data: {
           orderNumber,
           productId: product.id,
@@ -79,21 +52,43 @@ const triggerProcurement = async (productId, shortageQty, salesOrderId) => {
               operationName: op.operationName,
               sequence: op.sequence,
               plannedDuration: op.duration * ratio,
-              status: 'PENDING'
-            }))
-          }
+              status: 'PENDING',
+            })),
+          },
         },
-        include: { workOrders: true }
+        include: { workOrders: true },
       });
-
-      generatedDocument = manufacturingOrder;
       documentType = 'ManufacturingOrder';
     } else {
-      // E.g., SUBCONTRACT -> ignored for this exact snippet.
-      return null;
+      let vendor = await tx.vendor.findFirst();
+      if (!vendor) {
+        vendor = await tx.vendor.create({
+          data: { name: 'Default System Vendor', contact: 'Auto-generated' },
+        });
+      }
+
+      const orderNumber = `PO-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      generatedDocument = await tx.purchaseOrder.create({
+        data: {
+          orderNumber,
+          vendorId: vendor.id,
+          userId: salesOrder.userId,
+          status: 'DRAFT',
+          totalAmount: vendorCost,
+          sourceSalesOrderId: salesOrderId,
+          lines: {
+            create: [{
+              productId: product.id,
+              quantity: shortageQty,
+              unitPrice: product.costPrice,
+              lineTotal: vendorCost,
+            }],
+          },
+        },
+      });
+      documentType = 'PurchaseOrder';
     }
 
-    // Create Audit Log
     await tx.auditLog.create({
       data: {
         userId: salesOrder.userId,
@@ -101,21 +96,19 @@ const triggerProcurement = async (productId, shortageQty, salesOrderId) => {
         entity: documentType,
         entityId: generatedDocument.id,
         details: {
-          message: `Auto-generated from Sales Order ${salesOrder.orderNumber} due to shortage`,
+          message: `Auto-generated from ${salesOrder.orderNumber} — ${useManufacture ? 'manufacture' : 'purchase'} (vendor ₹${Math.round(vendorCost)} vs make ₹${manufacturingCost ? Math.round(manufacturingCost) : 'N/A'})`,
           shortageQty,
           productId: product.id,
-          salesOrderId: salesOrderId
-        }
-      }
+          salesOrderId,
+          routing: useManufacture ? 'MANUFACTURE' : 'PURCHASE',
+          vendorCost,
+          manufacturingCost,
+        },
+      },
     });
 
-    return {
-      type: documentType,
-      document: generatedDocument
-    };
+    return { type: documentType, document: generatedDocument };
   });
 };
 
-module.exports = {
-  triggerProcurement
-};
+module.exports = { triggerProcurement };

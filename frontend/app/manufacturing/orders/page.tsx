@@ -11,7 +11,10 @@ interface MO {
   plannedQuantity: number;
   completedQuantity: number;
   createdAt: string;
+  sourceSalesOrderId?: string | null;
+  sourceSalesOrder?: { id: string; orderNumber: string; customerName: string; status: string } | null;
   product: { name: string; sku: string };
+  workOrders?: Array<{ id: string; status: string }>;
 }
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
@@ -113,14 +116,14 @@ export default function ManufacturingOrdersPage() {
             <table className="min-w-full divide-y divide-gray-100">
               <thead className="bg-gray-50">
                 <tr>
-                  {['MO Number', 'Product', 'SKU', 'Qty', 'Progress', 'Status', 'Created', ''].map(h => (
+                  {['MO Number', 'Source SO', 'Product', 'SKU', 'Qty', 'Progress', 'Status', 'Created', ''].map(h => (
                     <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {orders.length === 0 ? (
-                  <tr><td colSpan={8} className="px-5 py-10 text-center text-sm text-gray-400">No manufacturing orders found</td></tr>
+                  <tr><td colSpan={9} className="px-5 py-10 text-center text-sm text-gray-400">No manufacturing orders found</td></tr>
                 ) : orders.map(mo => {
                   const pct = mo.plannedQuantity > 0
                     ? Math.round((mo.completedQuantity / mo.plannedQuantity) * 100) : 0;
@@ -130,6 +133,16 @@ export default function ManufacturingOrdersPage() {
                         <Link href={`/manufacturing-orders/${mo.id}`} className="font-bold text-purple-600 hover:text-purple-700 text-sm">
                           {mo.orderNumber}
                         </Link>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {mo.sourceSalesOrder ? (
+                          <Link href={`/flow-tracker?order=${mo.sourceSalesOrder.orderNumber}`}
+                            className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+                            {mo.sourceSalesOrder.orderNumber}
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-gray-400">Manual / backlog</span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-sm font-medium text-gray-800">{mo.product.name}</td>
                       <td className="px-5 py-3.5 text-xs text-gray-400 font-mono">{mo.product.sku}</td>

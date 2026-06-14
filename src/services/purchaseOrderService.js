@@ -144,10 +144,31 @@ const receivePurchaseOrder = async (id, receipts) => {
   });
 };
 
+const cancelPurchaseOrder = async (id) => {
+  const order = await getPurchaseOrderById(id);
+
+  if (order.status === 'CANCELLED') {
+    throw new Error('Purchase Order is already cancelled');
+  }
+  if (order.status === 'FULLY_DELIVERED') {
+    throw new Error('Cannot cancel a fully received order');
+  }
+  if (order.status === 'PARTIALLY_DELIVERED') {
+    throw new Error('Cannot cancel a partially received order');
+  }
+
+  return await prisma.purchaseOrder.update({
+    where: { id },
+    data: { status: 'CANCELLED' },
+    include: { lines: true, vendor: true },
+  });
+};
+
 module.exports = {
   createPurchaseOrder,
   getPurchaseOrders,
   getPurchaseOrderById,
   confirmPurchaseOrder,
-  receivePurchaseOrder
+  receivePurchaseOrder,
+  cancelPurchaseOrder
 };

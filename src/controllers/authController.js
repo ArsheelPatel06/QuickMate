@@ -1,6 +1,6 @@
 const authService = require('../services/authService');
 const { successResponse, errorResponse } = require('../utils/response');
-const { getFirebaseAdmin, admin } = require('../config/firebase');
+const { getFirebaseAdmin, getFirebaseAuth } = require('../config/firebase');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
@@ -49,7 +49,7 @@ const syncFirebaseUser = async (req, res, next) => {
     if (!idToken) return errorResponse(res, 400, 'idToken is required');
 
     // Verify Firebase token
-    const decoded = await admin.auth().verifyIdToken(idToken);
+    const decoded = await getFirebaseAuth().verifyIdToken(idToken);
     const { uid, email } = decoded;
 
     // 1. Already linked?

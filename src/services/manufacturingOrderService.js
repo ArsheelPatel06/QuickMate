@@ -2,9 +2,26 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const stockService = require('./stockService');
 
+/** Join source sales order numbers onto MO records */
+async function attachSourceSalesOrders(orders) {
+  const soIds = [...new Set(orders.map(o => o.sourceSalesOrderId).filter(Boolean))];
+  if (soIds.length === 0) {
+    return orders.map(o => ({ ...o, sourceSalesOrder: null }));
+  }
+  const salesOrders = await prisma.salesOrder.findMany({
+    where: { id: { in: soIds } },
+    select: { id: true, orderNumber: true, customerName: true, status: true },
+  });
+  const byId = Object.fromEntries(salesOrders.map(so => [so.id, so]));
+  return orders.map(o => ({
+    ...o,
+    sourceSalesOrder: o.sourceSalesOrderId ? byId[o.sourceSalesOrderId] ?? null : null,
+  }));
+}
+
 // Create MO manually
 const createManufacturingOrder = async (data) => {
-  const { productId, plannedQuantity, bomId } = data;
+  const { productId, plannedQuantity, bomId, sourceSalesOrderId } = data;
 
   // 1. Fetch BOM
   const bom = await prisma.bOM.findFirst({
@@ -27,6 +44,7 @@ const createManufacturingOrder = async (data) => {
       bomId: bom.id,
       status: 'DRAFT',
       plannedQuantity,
+      ...(sourceSalesOrderId ? { sourceSalesOrderId } : {}),
       workOrders: {
         create: bom.bomOperations.map(op => ({
           workCenterId: op.workCenterId,
@@ -52,13 +70,15 @@ const getManufacturingOrders = async (page = 1, limit = 10, status = null) => {
       skip,
       take,
       orderBy: { createdAt: 'desc' },
-      include: { product: true, workOrders: true }
+      include: { product: true, workOrders: { include: { workCenter: true } } }
     }),
     prisma.manufacturingOrder.count({ where })
   ]);
 
+  const enriched = await attachSourceSalesOrders(orders);
+
   return {
-    orders,
+    orders: enriched,
     pagination: {
       total,
       page: parseInt(page),
@@ -83,7 +103,8 @@ const getManufacturingOrderById = async (id) => {
   });
 
   if (!order) throw new Error('Manufacturing Order not found');
-  return order;
+  const [enriched] = await attachSourceSalesOrders([order]);
+  return enriched;
 };
 
 // Complete a Work Order

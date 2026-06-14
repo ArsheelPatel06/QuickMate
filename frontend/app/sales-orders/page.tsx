@@ -62,7 +62,7 @@ export default function SalesOrdersPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        setResult({ orderNumber: order.orderNumber, status: 'confirmed', moCreated: true, poCreated: false });
+        setResult({ orderNumber: order.orderNumber, status: 'confirmed' });
         setTimeout(() => setResult(null), 5000);
         fetchOrders();
       }
@@ -114,21 +114,16 @@ export default function SalesOrdersPage() {
               <Zap className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-bold">{result.orderNumber} Confirmed — Automation Triggered</p>
-              <div className="mt-2 flex flex-wrap gap-2 text-sm">
-                <span className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Inventory Check
-                </span>
-                <span className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> MO Created (if shortage)
-                </span>
-                <span className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> PO Request (if raw material shortage)
-                </span>
-                <span className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Team Notified
-                </span>
-              </div>
+              <p className="font-bold">{result.orderNumber} Confirmed</p>
+              <p className="mt-1 text-sm text-white/90">
+                Stock reserved. Continue in Flow Tracker to fulfill shortages and deliver.
+              </p>
+              <Link
+                href={`/flow-tracker?order=${result.orderNumber}`}
+                className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold hover:bg-white/30"
+              >
+                Open Flow Tracker <ArrowRight className="h-3 w-3" />
+              </Link>
             </div>
           </div>
         </div>
@@ -256,6 +251,14 @@ export default function SalesOrdersPage() {
                       >
                         {confirmingId === order.id ? 'Confirming…' : 'Confirm →'}
                       </button>
+                    )}
+                    {['CONFIRMED', 'IN_PROGRESS', 'PARTIALLY_DELIVERED'].includes(order.status) && (
+                      <Link
+                        href={`/flow-tracker?order=${order.orderNumber}`}
+                        className="text-xs font-semibold text-orange-600 hover:text-orange-700"
+                      >
+                        Track Flow →
+                      </Link>
                     )}
                   </div>
                 </div>

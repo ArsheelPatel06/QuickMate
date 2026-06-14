@@ -43,6 +43,18 @@ router.post(
   salesOrderController.confirmSalesOrder
 );
 
+router.get(
+  '/:id/flow',
+  authorize('ADMIN', 'SALES', 'OWNER', 'INVENTORY', 'MANUFACTURING'),
+  salesOrderController.getFlowAnalysis
+);
+
+router.post(
+  '/:id/fulfill',
+  authorize('ADMIN', 'SALES', 'OWNER', 'MANUFACTURING'),
+  salesOrderController.fulfillShortage
+);
+
 router.post(
   '/:id/deliver',
   authorize('ADMIN', 'INVENTORY', 'OWNER'),

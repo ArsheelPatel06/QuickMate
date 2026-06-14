@@ -8,7 +8,8 @@ const Joi = require('joi');
 const createMOSchema = Joi.object({
   productId: Joi.string().required(),
   plannedQuantity: Joi.number().min(0.0001).required(),
-  bomId: Joi.string().optional()
+  bomId: Joi.string().optional(),
+  sourceSalesOrderId: Joi.string().optional(),
 });
 
 const completeWOSchema = Joi.object({

@@ -264,7 +264,7 @@ function OperationsAdvisor({ advisor }: { advisor: AdvisorData }) {
 
       {/* Recommendations list */}
       <div className="bg-white divide-y divide-gray-100">
-        {advisor.recommendations.map((rec, i) => {
+        {(advisor.recommendations ?? []).map((rec, i) => {
           const u = URGENCY_STYLES[rec.urgency] ?? URGENCY_STYLES.LOW;
           const catStyle = CATEGORY_STYLES[rec.category] ?? CATEGORY_STYLES.OPERATIONS;
 
@@ -433,16 +433,24 @@ export default function OperationsIntelligencePage() {
     );
   }
 
-  const { advisor, healthScore, alerts, inventoryRisk, procurementForecast, bottleneck, orderRisk } = data;
+  const {
+    advisor        = { recommendations: [] },
+    healthScore    = { overall: 0, breakdown: { inventoryHealth: 0, manufacturingHealth: 0, procurementHealth: 0 } },
+    alerts         = [],
+    inventoryRisk  = { summary: {}, components: [] },
+    procurementForecast = { forecast: [] },
+    bottleneck     = { workCenters: [] },
+    orderRisk      = { orders: [] },
+  } = data ?? {};
 
   // Recharts data
-  const invChartData = inventoryRisk.components.map(c => ({
+  const invChartData = (inventoryRisk.components ?? []).map(c => ({
     name: c.component.replace('Wooden ', ''),
     Coverage: c.coverage,
     risk: c.risk,
   }));
 
-  const procChartData = procurementForecast.forecast
+  const procChartData = (procurementForecast.forecast ?? [])
     .filter(f => f.daysRemaining !== null && f.daysRemaining < 30)
     .map(f => ({
       name: f.product.replace('Wood ', ''),
@@ -450,7 +458,7 @@ export default function OperationsIntelligencePage() {
       status: f.status,
     }));
 
-  const criticalAlertCount = alerts.filter(a => a.level === 'CRITICAL').length;
+  const criticalAlertCount = (alerts ?? []).filter(a => a.level === 'CRITICAL').length;
 
   return (
     <div className="space-y-6 pb-10">
@@ -531,7 +539,7 @@ export default function OperationsIntelligencePage() {
         {/* Inventory Risk */}
         <Section title="Inventory Risk" icon={Package} iconColor="text-red-500">
           <div className="flex items-center gap-3 mb-4">
-            {Object.entries(inventoryRisk.summary)
+            {Object.entries(inventoryRisk.summary ?? {})
               .filter(([k]) => k !== 'totalComponents')
               .map(([k, v]) => (
                 <div key={k} className="flex items-center gap-1.5">
@@ -599,7 +607,7 @@ export default function OperationsIntelligencePage() {
         {/* Bottleneck Analysis */}
         <Section title="Bottleneck Analysis" icon={Zap} iconColor="text-yellow-500">
           <div className="space-y-4">
-            {bottleneck.workCenters.map(wc => (
+            {(bottleneck.workCenters ?? []).map(wc => (
               <div key={wc.workCenter}>
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
@@ -632,10 +640,10 @@ export default function OperationsIntelligencePage() {
         {/* Order Risk */}
         <Section title="At-Risk Orders" icon={Clock} iconColor="text-purple-500">
           <div className="space-y-3">
-            {orderRisk.orders.length === 0 && (
+            {(orderRisk.orders ?? []).length === 0 && (
               <p className="text-sm text-gray-500 text-center py-4">No active confirmed orders</p>
             )}
-            {orderRisk.orders.slice(0, 6).map(order => (
+            {(orderRisk.orders ?? []).slice(0, 6).map(order => (
               <div key={order.orderNumber} className={`rounded-lg p-3 border ${
                 order.orderRisk === 'CRITICAL' ? 'bg-red-50 border-red-200'
                 : order.orderRisk === 'HIGH'   ? 'bg-orange-50 border-orange-200'

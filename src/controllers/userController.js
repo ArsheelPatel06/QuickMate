@@ -84,4 +84,17 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
-module.exports = { getUsers, getUserById, createUser, updateUser, disableUser, enableUser, resetPassword };
+const deleteUser = async (req, res, next) => {
+  try {
+    // Prevent self-deletion
+    if (req.params.id === req.user.id) {
+      return errorResponse(res, 'You cannot delete your own account.', 400);
+    }
+    await userService.deleteUser(req.params.id);
+    return successResponse(res, { message: 'User deleted successfully.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getUsers, getUserById, createUser, updateUser, disableUser, enableUser, resetPassword, deleteUser };

@@ -147,6 +147,29 @@ export default function PurchaseOrderFormPage() {
       fetchOrder();
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!order || !window.confirm(`Cancel ${order.orderNumber}?`)) return;
+    setError('');
+    setSuccessMsg('');
+    setActionLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'}/purchase-orders/${order.id}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setSuccessMsg('Purchase Order cancelled.');
+      fetchOrder();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
       setActionLoading(false);
     }
   };
@@ -291,7 +314,9 @@ export default function PurchaseOrderFormPage() {
               {order.status !== 'FULLY_DELIVERED' && order.status !== 'CANCELLED' && (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-x-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-red-50 transition-colors"
+                  onClick={handleCancel}
+                  disabled={actionLoading}
+                  className="inline-flex items-center gap-x-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-red-600 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-red-50 transition-colors disabled:opacity-60"
                 >
                   <XCircle className="-ml-0.5 h-4 w-4" />
                   Cancel
@@ -422,7 +447,7 @@ export default function PurchaseOrderFormPage() {
                         />
                       </td>
                       <td className="whitespace-nowrap px-6 py-2 text-right text-sm font-medium text-gray-900">
-                        ${(line.quantity * line.unitPrice).toFixed(2)}
+                        ₹{(line.quantity * line.unitPrice).toLocaleString('en-IN')}
                       </td>
                       <td className="whitespace-nowrap pr-3 py-2 text-right">
                         <button
@@ -463,10 +488,10 @@ export default function PurchaseOrderFormPage() {
                         </td>
                       )}
                       <td className="whitespace-nowrap px-3 py-3 text-sm text-gray-500 text-right">
-                        ${line.unitPrice ? parseFloat(line.unitPrice.toString()).toFixed(2) : '0.00'}
+                        ₹{line.unitPrice ? Number(line.unitPrice).toLocaleString('en-IN') : '0'}
                       </td>
                       <td className="whitespace-nowrap px-6 py-3 text-sm font-semibold text-gray-900 text-right">
-                        ${line.lineTotal ? parseFloat(line.lineTotal.toString()).toFixed(2) : '0.00'}
+                        ₹{line.lineTotal ? Number(line.lineTotal).toLocaleString('en-IN') : '0'}
                       </td>
                     </tr>
                   ))
@@ -490,7 +515,7 @@ export default function PurchaseOrderFormPage() {
             <div className="w-full max-w-sm">
               <div className="flex justify-between items-center py-2 text-lg font-bold text-gray-900">
                 <span>Total Amount:</span>
-                <span>${subtotal ? parseFloat(subtotal.toString()).toFixed(2) : '0.00'}</span>
+                <span>₹{subtotal ? Number(subtotal).toLocaleString('en-IN') : '0'}</span>
               </div>
             </div>
           </div>

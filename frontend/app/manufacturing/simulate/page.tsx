@@ -47,6 +47,7 @@ export default function SimulatePage() {
   const [quantity, setQuantity] = useState(50);
   const [result, setResult] = useState<SimulationResult | null>(null);
   const [running, setRunning] = useState(false);
+  const [error, setError] = useState('');
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
@@ -69,20 +70,37 @@ export default function SimulatePage() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  const runSimulation = () => {
+  const runSimulation = async () => {
     if (!selectedProductId || !quantity) return;
 
     setRunning(true);
     setResult(null);
+    setError('');
 
-    // Run client-side simulation against BOM data
-    setTimeout(() => {
-      const bom = boms.find(b => b.productId === selectedProductId);
+    try {
+      const bomSummary = boms.find(b => b.productId === selectedProductId);
       const product = products.find(p => p.id === selectedProductId);
-      if (!bom || !product) { setRunning(false); return; }
+      if (!bomSummary || !product) {
+        throw new Error('Product or BOM not found.');
+      }
 
-      const materials = bom.bomLines.map(line => {
-        const required  = line.quantity * quantity;
+      // List endpoint does not include bomLines — fetch full BOM detail
+      const res = await fetch(`${API}/boms/${bomSummary.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.message || 'Failed to load BOM details');
+
+      const bomLines = payload.data?.bomLines ?? [];
+      if (bomLines.length === 0) {
+        throw new Error('This BOM has no components configured.');
+      }
+
+      const bomQty = Number(payload.data?.quantity ?? 1) || 1;
+      const multiplier = quantity / bomQty;
+
+      const materials = bomLines.map((line: BOM['bomLines'][number]) => {
+        const required  = line.quantity * multiplier;
         const available = Math.max(0, line.product.onHandQty - (line.product.reservedQty ?? 0));
         const gap       = Math.max(0, required - available);
         const costPrice = Number(line.product.costPrice ?? 0);
@@ -90,9 +108,9 @@ export default function SimulatePage() {
           gap === 0 ? 'OK' : gap > required * 0.5 ? 'CRITICAL' : 'SHORTAGE';
         return {
           name:        line.product.name,
-          required,
+          required:    Math.round(required * 100) / 100,
           available,
-          gap,
+          gap:         Math.round(gap * 100) / 100,
           status,
           costNeeded:  gap * costPrice,
         };
@@ -117,8 +135,11 @@ export default function SimulatePage() {
         : 'LOW — Production can proceed without bottleneck risk.';
 
       setResult({ product: product.name, quantity, materials, totalProcurementCost: totalCost, estimatedDelay, feasibility, summary, bottleneckRisk });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Simulation failed');
+    } finally {
       setRunning(false);
-    }, 600);
+    }
   };
 
   const FEASIBILITY_STYLE: Record<string, { bg: string; border: string; text: string; badge: string }> = {
@@ -141,6 +162,13 @@ export default function SimulatePage() {
           Enter any product and quantity. The simulator analyses BOM requirements, detects material gaps, and estimates procurement cost + delay.
         </p>
       </div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-red-700 text-sm">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Input panel */}
